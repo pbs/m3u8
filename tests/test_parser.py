@@ -116,7 +116,7 @@ def test_should_parse_iframe_playlist():
     assert 'segment1.ts' == data['segments'][0]['uri']
 
 def test_should_parse_playlist_using_byteranges():
-    data = m3u8.parse(PLAYLIST_USING_BYTERANGES)
+    data = m3u8.parse(PLAYLIST_USING_BYTERANGES_BEFORE_EXTINF)
 
     assert False == data['is_i_frames_only']
     assert 10 == data['segments'][0]['duration']

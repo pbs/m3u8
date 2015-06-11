@@ -321,7 +321,7 @@ def test_dump_should_work_for_iframe_playlists():
     assert expected == obj.dumps().strip()
 
 def test_dump_should_work_for_playlists_using_byteranges():
-    obj = m3u8.M3U8(PLAYLIST_USING_BYTERANGES)
+    obj = m3u8.M3U8(PLAYLIST_USING_BYTERANGES_BEFORE_EXTINF)
 
     expected = PLAYLIST_USING_BYTERANGES.strip()
 

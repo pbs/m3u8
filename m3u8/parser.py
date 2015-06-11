@@ -3,7 +3,6 @@ M3U8 parser.
 
 '''
 import re
-from collections import namedtuple
 
 ext_x_targetduration = '#EXT-X-TARGETDURATION'
 ext_x_media_sequence = '#EXT-X-MEDIA-SEQUENCE'
@@ -52,6 +51,10 @@ def parse(content):
             _parse_byterange(line, state)
             state['expect_segment'] = True
 
+        elif line.startswith(extinf):
+            _parse_extinf(line, data, state)
+            state['expect_segment'] = True
+
         elif state['expect_segment']:
             _parse_ts_chunk(line, data, state)
             state['expect_segment'] = False
@@ -71,10 +74,6 @@ def parse(content):
 
         elif line.startswith(ext_x_key):
             _parse_key(line, data)
-
-        elif line.startswith(extinf):
-            _parse_extinf(line, data, state)
-            state['expect_segment'] = True
 
         elif line.startswith(ext_x_stream_inf):
             state['expect_playlist'] = True
@@ -105,8 +104,11 @@ def _parse_key(line, data):
         data['key'][normalize_attribute(name)] = remove_quotes(value)
 
 def _parse_extinf(line, data, state):
+    if 'segment' not in state:
+        state['segment'] = dict()
     duration, title = line.replace(extinf + ':', '').split(',')
-    state['segment'] = {'duration': float(duration), 'title': remove_quotes(title)}
+    state['segment']['duration'] = float(duration)
+    state['segment']['title'] = remove_quotes(title)
 
 def _parse_ts_chunk(line, data, state):
     segment = state.pop('segment')
@@ -153,6 +155,8 @@ def _parse_variant_playlist(line, data, state):
     data['playlists'].append(playlist)
 
 def _parse_byterange(line, state):
+    if 'segment' not in state:
+        state['segment'] = dict()
     state['segment']['byterange'] = line.replace(ext_x_byterange + ':', '')
 
 def _parse_simple_parameter(line, data, cast_to=str):
