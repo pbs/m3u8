@@ -50,7 +50,7 @@ def parse(content):
             _parse_byterange(line, state)
             state['expect_segment'] = True
 
-        elif line.startswith(extinf):
+        elif line.startswith(protocol.extinf):
             _parse_extinf(line, data, state)
             state['expect_segment'] = True
 
