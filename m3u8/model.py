@@ -1,10 +1,18 @@
+# coding: utf-8
+# Copyright 2014 Globo.com Player authors. All rights reserved.
+# Use of this source code is governed by a MIT License
+# license that can be found in the LICENSE file.
+
 from collections import namedtuple
 import os
 import posixpath
 import errno
 import math
-import urlparse
-import re
+
+try:
+    import urlparse as url_parser
+except ImportError:
+    import urllib.parse as url_parser
 
 from m3u8 import parser
 
@@ -75,6 +83,10 @@ class M3U8(object):
         Returns the EXT-X-MEDIA-SEQUENCE as an integer
         http://tools.ietf.org/html/draft-pantos-http-live-streaming-07#section-3.3.3
 
+      `program_date_time`
+        Returns the EXT-X-PROGRAM-DATE-TIME as a string
+        http://tools.ietf.org/html/draft-pantos-http-live-streaming-07#section-3.3.5
+
       `version`
         Return the EXT-X-VERSION as is
 
@@ -93,6 +105,10 @@ class M3U8(object):
         Returns true if EXT-X-I-FRAMES-ONLY tag present in M3U8.
         http://tools.ietf.org/html/draft-pantos-http-live-streaming-07#section-3.3.12
 
+      `is_independent_segments`
+        Returns true if EXT-X-INDEPENDENT-SEGMENTS tag present in M3U8.
+        https://tools.ietf.org/html/draft-pantos-http-live-streaming-13#section-3.4.16
+
     '''
 
     simple_attributes = (
@@ -102,6 +118,8 @@ class M3U8(object):
         ('is_i_frames_only', 'is_i_frames_only'),
         ('target_duration',  'targetduration'),
         ('media_sequence',   'media_sequence'),
+        ('program_date_time',   'program_date_time'),
+        ('is_independent_segments', 'is_independent_segments'),
         ('version',          'version'),
         ('allow_cache',      'allow_cache'),
         ('playlist_type',    'playlist_type')
@@ -129,17 +147,9 @@ class M3U8(object):
             self.files.append(self.key.uri)
         self.files.extend(self.segments.uri)
 
-        self.media = []
-        for media in self.data.get('media', []):
-            self.media.append(Media(uri=media.get('uri'),
-                                    type=media.get('type'),
-                                    group_id=media.get('group_id'),
-                                    language=media.get('language'),
-                                    name=media.get('name'),
-                                    default=media.get('default'),
-                                    autoselect=media.get('autoselect'),
-                                    forced=media.get('forced'),
-                                    characteristics=media.get('characteristics')))
+        self.media = MediaList([ Media(base_uri=self.base_uri,
+                                       **media)
+                                 for media in self.data.get('media', []) ])
 
         self.playlists = PlaylistList([ Playlist(base_uri=self.base_uri,
                                                  media=self.media,
@@ -164,6 +174,8 @@ class M3U8(object):
     @base_uri.setter
     def base_uri(self, new_base_uri):
         self._base_uri = new_base_uri
+        self.media.base_uri = new_base_uri
+        self.playlists.base_uri = new_base_uri
         self.segments.base_uri = new_base_uri
 
     @property
@@ -180,6 +192,7 @@ class M3U8(object):
             return
         if self.key:
             self.key.base_path = self.base_path
+        self.media.base_path = self.base_path
         self.segments.base_path = self.base_path
         self.playlists.base_path = self.base_path
 
@@ -204,7 +217,9 @@ class M3U8(object):
         You could also use unicode(<this obj>) or str(<this obj>)
         '''
         output = ['#EXTM3U']
-        if self.media_sequence is not None:
+        if self.is_independent_segments:
+            output.append('#EXT-X-INDEPENDENT-SEGMENTS')
+        if self.media_sequence > 0:
             output.append('#EXT-X-MEDIA-SEQUENCE:' + str(self.media_sequence))
         if self.allow_cache:
             output.append('#EXT-X-ALLOW-CACHE:' + self.allow_cache.upper())
@@ -214,35 +229,16 @@ class M3U8(object):
             output.append(str(self.key))
         if self.target_duration:
             output.append('#EXT-X-TARGETDURATION:' + int_or_float_to_string(self.target_duration))
+        if self.program_date_time is not None:
+            output.append('#EXT-X-PROGRAM-DATE-TIME:' + parser.format_date_time(self.program_date_time))
         if not (self.playlist_type is None or self.playlist_type == ''):
             output.append(
                 '#EXT-X-PLAYLIST-TYPE:%s' % str(self.playlist_type).upper())
         if self.is_i_frames_only:
             output.append('#EXT-X-I-FRAMES-ONLY')
         if self.is_variant:
-            for media in self.media:
-                media_out = []
-
-                if media.uri:
-                    media_out.append('URI=' + quoted(media.uri))
-                if media.type:
-                    media_out.append('TYPE=' + media.type)
-                if media.group_id:
-                    media_out.append('GROUP-ID=' + quoted(media.group_id))
-                if media.language:
-                    media_out.append('LANGUAGE=' + quoted(media.language))
-                if media.name:
-                    media_out.append('NAME=' + quoted(media.name))
-                if media.default:
-                    media_out.append('DEFAULT=' + media.default)
-                if media.autoselect:
-                    media_out.append('AUTOSELECT=' + media.autoselect)
-                if media.forced:
-                    media_out.append('FORCED=' + media.forced)
-                if media.characteristics:
-                    media_out.append('CHARACTERISTICS=' + quoted(media.characteristics))
-
-                output.append('#EXT-X-MEDIA:' + ','.join(media_out))
+            if self.media:
+                output.append(str(self.media))
             output.append(str(self.playlists))
             if self.iframe_playlists:
                 output.append(str(self.iframe_playlists))
@@ -275,6 +271,8 @@ class BasePathMixin(object):
 
     @property
     def absolute_uri(self):
+        if self.uri is None:
+            return None
         if parser.is_url(self.uri):
             return self.uri
         else:
@@ -316,26 +314,55 @@ class Segment(BasePathMixin):
     `title`
       title attribute from EXTINF parameter
 
+    `program_date_time`
+      Returns the EXT-X-PROGRAM-DATE-TIME as a datetime
+      http://tools.ietf.org/html/draft-pantos-http-live-streaming-07#section-3.3.5
+
+    `discontinuity`
+      Returns a boolean indicating if a EXT-X-DISCONTINUITY tag exists
+      http://tools.ietf.org/html/draft-pantos-http-live-streaming-13#section-3.4.11
+
+    `cue_out`
+      Returns a boolean indicating if a EXT-X-CUE-OUT-CONT tag exists
+
     `duration`
-      duration attribute from EXTINF paramter
+      duration attribute from EXTINF parameter
 
     `base_uri`
       uri the key comes from in URI hierarchy. ex.: http://example.com/path/to
 
     `byterange`
       byterange attribute from EXT-X-BYTERANGE parameter
+
+    `key`
+      Key used to encrypt the segment (EXT-X-KEY)
     '''
 
-    def __init__(self, uri, base_uri, duration=None,
-                 title=None, byterange=None):
+    def __init__(self, uri, base_uri, program_date_time=None, duration=None,
+                 title=None, byterange=None, cue_out=False, discontinuity=False, key=None):
         self.uri = uri
         self.duration = duration
         self.title = title
         self.base_uri = base_uri
         self.byterange = byterange
+        self.program_date_time = program_date_time
+        self.discontinuity = discontinuity
+        self.cue_out = cue_out
+        self.key = Key(base_uri=base_uri,**key) if key else None
 
-    def __str__(self):
-        output = ['#EXTINF:%s,' % int_or_float_to_string(self.duration)]
+
+    def dumps(self, last_segment):
+        output = []
+        if last_segment and self.key != last_segment.key:
+          output.append(str(self.key))
+          output.append('\n')
+
+        if self.discontinuity:
+            output.append('#EXT-X-DISCONTINUITY\n')
+            output.append('#EXT-X-PROGRAM-DATE-TIME:%s\n' % parser.format_date_time(self.program_date_time))
+        if self.cue_out:
+            output.append('#EXT-X-CUE-OUT-CONT\n')
+        output.append('#EXTINF:%s,' % int_or_float_to_string(self.duration))
         if self.title:
             output.append(quoted(self.title))
 
@@ -348,11 +375,18 @@ class Segment(BasePathMixin):
 
         return ''.join(output)
 
+    def __str__(self):
+        return self.dumps()
+
 
 class SegmentList(list, GroupedBasePathMixin):
 
     def __str__(self):
-        output = [str(segment) for segment in self]
+        output = []
+        last_segment = None
+        for segment in self:
+          output.append(segment.dumps(last_segment))
+          last_segment = segment
         return '\n'.join(output)
 
     @property
@@ -376,21 +410,39 @@ class Key(BasePathMixin):
       initialization vector. a string representing a hexadecimal number. ex.: 0X12A
 
     '''
-    def __init__(self, method, uri, base_uri, iv=None):
+    def __init__(self, method, uri, base_uri, iv=None, keyformat=None, keyformatversions=None):
         self.method = method
         self.uri = uri
         self.iv = iv
+        self.keyformat = keyformat
+        self.keyformatversions = keyformatversions
         self.base_uri = base_uri
 
     def __str__(self):
         output = [
             'METHOD=%s' % self.method,
-            'URI="%s"' % self.uri,
             ]
+        if self.uri:
+            output.append('URI="%s"' % self.uri)
         if self.iv:
             output.append('IV=%s' % self.iv)
+        if self.keyformat:
+            output.append('KEYFORMAT="%s"' % self.keyformat)
+        if self.keyformatversions:
+            output.append('KEYFORMATVERSIONS="%s"' % self.keyformatversions)
 
         return '#EXT-X-KEY:' + ','.join(output)
+
+    def __eq__(self, other):
+        return self.method == other.method and \
+               self.uri == other.uri and \
+               self.iv == other.iv and \
+               self.base_uri == other.base_uri and \
+               self.keyformat == other.keyformat and \
+               self.keyformatversions == other.keyformatversions
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 
 class Playlist(BasePathMixin):
@@ -432,9 +484,9 @@ class Playlist(BasePathMixin):
     def __str__(self):
         stream_inf = []
         if self.stream_info.program_id:
-            stream_inf.append('PROGRAM-ID=' + self.stream_info.program_id)
+            stream_inf.append('PROGRAM-ID=%d' % self.stream_info.program_id)
         if self.stream_info.bandwidth:
-            stream_inf.append('BANDWIDTH=' + self.stream_info.bandwidth)
+            stream_inf.append('BANDWIDTH=%d' % self.stream_info.bandwidth)
         if self.stream_info.resolution:
             res = str(self.stream_info.resolution[0]) + 'x' + str(self.stream_info.resolution[1])
             stream_inf.append('RESOLUTION=' + res)
@@ -481,10 +533,10 @@ class IFramePlaylist(BasePathMixin):
     def __str__(self):
         iframe_stream_inf = []
         if self.iframe_stream_info.program_id:
-            iframe_stream_inf.append('PROGRAM-ID=' +
+            iframe_stream_inf.append('PROGRAM-ID=%d' %
                                      self.iframe_stream_info.program_id)
         if self.iframe_stream_info.bandwidth:
-            iframe_stream_inf.append('BANDWIDTH=' +
+            iframe_stream_inf.append('BANDWIDTH=%d' %
                                      self.iframe_stream_info.bandwidth)
         if self.iframe_stream_info.resolution:
             res = (str(self.iframe_stream_info.resolution[0]) + 'x' +
@@ -499,8 +551,88 @@ class IFramePlaylist(BasePathMixin):
         return '#EXT-X-I-FRAME-STREAM-INF:' + ','.join(iframe_stream_inf)
 
 StreamInfo = namedtuple('StreamInfo', ['bandwidth', 'program_id', 'resolution', 'codecs'])
-Media = namedtuple('Media', ['uri', 'type', 'group_id', 'language', 'name',
-                             'default', 'autoselect', 'forced', 'characteristics'])
+
+class Media(BasePathMixin):
+    '''
+    A media object from a M3U8 playlist
+    https://tools.ietf.org/html/draft-pantos-http-live-streaming-16#section-4.3.4.1
+
+    `uri`
+      a string with the media uri
+
+    `type`
+    `group_id`
+    `language`
+    `assoc-language`
+    `name`
+    `default`
+    `autoselect`
+    `forced`
+    `instream_id`
+    `characteristics`
+      attributes in the EXT-MEDIA tag
+
+    `base_uri`
+      uri the media comes from in URI hierarchy. ex.: http://example.com/path/to
+    '''
+
+    def __init__(self, uri=None, type=None, group_id=None, language=None,
+                 name=None, default=None, autoselect=None, forced=None,
+                 characteristics=None, assoc_language=None,
+                 instream_id=None,base_uri=None):
+        self.base_uri = base_uri
+        self.uri = uri
+        self.type = type
+        self.group_id = group_id
+        self.language = language
+        self.name = name
+        self.default = default
+        self.autoselect = autoselect
+        self.forced = forced
+        self.assoc_language = assoc_language
+        self.instream_id = instream_id
+        self.characteristics = characteristics
+
+    def dumps(self):
+        media_out = []
+
+        if self.uri:
+            media_out.append('URI=' + quoted(self.uri))
+        if self.type:
+            media_out.append('TYPE=' + self.type)
+        if self.group_id:
+            media_out.append('GROUP-ID=' + quoted(self.group_id))
+        if self.language:
+            media_out.append('LANGUAGE=' + quoted(self.language))
+        if self.assoc_language:
+            media_out.append('ASSOC-LANGUAGE=' + quoted(self.assoc_language))
+        if self.name:
+            media_out.append('NAME=' + quoted(self.name))
+        if self.default:
+            media_out.append('DEFAULT=' + self.default)
+        if self.autoselect:
+            media_out.append('AUTOSELECT=' + self.autoselect)
+        if self.forced:
+            media_out.append('FORCED=' + self.forced)
+        if self.instream_id:
+            media_out.append('INSTREAM-ID=' + self.instream_id)
+        if self.characteristics:
+            media_out.append('CHARACTERISTICS=' + quoted(self.characteristics))
+
+        return ('#EXT-X-MEDIA:' + ','.join(media_out))
+
+    def __str__(self):
+        return self.dumps()
+
+class MediaList(list, GroupedBasePathMixin):
+
+    def __str__(self):
+        output = [str(playlist) for playlist in self]
+        return '\n'.join(output)
+
+    @property
+    def uri(self):
+        return [media.uri for media in self]
 
 class PlaylistList(list, GroupedBasePathMixin):
 
@@ -517,10 +649,10 @@ def quoted(string):
 
 def _urijoin(base_uri, path):
     if parser.is_url(base_uri):
-        parsed_url = urlparse.urlparse(base_uri)
+        parsed_url = url_parser.urlparse(base_uri)
         prefix = parsed_url.scheme + '://' + parsed_url.netloc
         new_path = posixpath.normpath(parsed_url.path + '/' + path)
-        return urlparse.urljoin(prefix, new_path.strip('/'))
+        return url_parser.urljoin(prefix, new_path.strip('/'))
     else:
         return os.path.normpath(os.path.join(base_uri, path.strip('/')))
 
