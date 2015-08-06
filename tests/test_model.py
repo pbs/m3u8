@@ -60,10 +60,11 @@ def test_segment_discontinuity_attribute():
 def test_segment_cue_out_attribute():
     obj = m3u8.M3U8(playlists.CUE_OUT_PLAYLIST)
     segments = obj.segments
+    print segments[0].__dict__
 
-    assert segments[0].cue_out == True
     assert segments[1].cue_out == True
     assert segments[2].cue_out == True
+    assert segments[3].cue_out == True
 
 def test_key_attribute():
     obj = m3u8.M3U8(playlists.SIMPLE_PLAYLIST)
@@ -383,6 +384,22 @@ def test_dump_should_work_for_iframe_playlists():
 
     assert expected == obj.dumps().strip()
 
+    obj = m3u8.M3U8(playlists.IFRAME_PLAYLIST2)
+
+    expected = playlists.IFRAME_PLAYLIST.strip()
+
+    # expected that dump will reverse EXTINF and EXT-X-BYTERANGE,
+    # hence IFRAME_PLAYLIST dump from IFRAME_PLAYLIST2 parse.
+    assert expected == obj.dumps().strip()
+
+    obj = m3u8.M3U8(playlists.IFRAME_PLAYLIST2)
+
+    expected = playlists.IFRAME_PLAYLIST.strip()
+
+    # expected that dump will reverse EXTINF and EXT-X-BYTERANGE,
+    # hence IFRAME_PLAYLIST dump from IFRAME_PLAYLIST2 parse.
+    assert expected == obj.dumps().strip()
+
 def test_dump_should_include_program_date_time():
     obj = m3u8.M3U8(playlists.SIMPLE_PLAYLIST_WITH_PROGRAM_DATE_TIME)
 
@@ -499,7 +516,7 @@ def test_0_media_sequence_added_to_file():
     obj = m3u8.M3U8()
     obj.media_sequence = 0
     result = obj.dumps()
-    expected = '#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\n'
+    expected = '#EXTM3U\n'
     assert result == expected
 
 def test_none_media_sequence_gracefully_ignored():
@@ -521,9 +538,13 @@ def test_m3u8_should_propagate_base_uri_to_segments():
     obj = m3u8.M3U8(content, base_uri='/any/path')
     assert '/entire1.ts' == obj.segments[0].uri
     assert '/any/path/entire1.ts' == obj.segments[0].absolute_uri
+    assert 'entire4.ts' == obj.segments[3].uri
+    assert '/any/path/entire4.ts' == obj.segments[3].absolute_uri
     obj.base_uri = '/any/where/'
     assert '/entire1.ts' == obj.segments[0].uri
     assert '/any/where/entire1.ts' == obj.segments[0].absolute_uri
+    assert 'entire4.ts' == obj.segments[3].uri
+    assert '/any/where/entire4.ts' == obj.segments[3].absolute_uri
 
 def test_m3u8_should_propagate_base_uri_to_key():
     with open(playlists.RELATIVE_PLAYLIST_FILENAME) as f:
