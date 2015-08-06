@@ -61,6 +61,18 @@ def parse(content, strict=False):
             _parse_byterange(line, state)
             state['expect_segment'] = True
 
+        elif line.startswith(protocol.extinf):
+            _parse_extinf(line, data, state)
+            state['expect_segment'] = True
+
+        elif state['expect_segment']:
+            _parse_ts_chunk(line, data, state)
+            state['expect_segment'] = False
+
+        elif state['expect_playlist']:
+            _parse_variant_playlist(line, data, state)
+            state['expect_playlist'] = False
+
         elif line.startswith(protocol.ext_x_targetduration):
             _parse_simple_parameter(line, data, float)
 
