@@ -208,7 +208,7 @@ class M3U8(object):
             self.is_variant = True
             self.iframe_playlists.append(iframe_playlist)
 
-    def add_media(self, media):
+    def add_media(self, media, replace_existing=False):
         self.media.append(media)
 
     def add_segment(self, segment):
@@ -591,13 +591,23 @@ class Media(BasePathMixin):
       uri the media comes from in URI hierarchy. ex.: http://example.com/path/to
     '''
 
-    def __init__(self, uri=None, type=None, group_id=None, language=None,
+    TYPE_AUDIO = 'AUDIO'
+    TYPE_VIDEO = 'VIDEO'
+    TYPE_SUBTITLES = 'SUBTITLES'
+    TYPE_CLOSED_CAPTIONS = 'CLOSED-CAPTIONS'
+    TYPE_CHOICES = (TYPE_AUDIO, TYPE_VIDEO,
+                    TYPE_SUBTITLES, TYPE_CLOSED_CAPTIONS)
+
+    def __init__(self, uri=None, type_=None, group_id=None, language=None,
                  name=None, default=None, autoselect=None, forced=None,
                  characteristics=None, assoc_language=None,
-                 instream_id=None,base_uri=None, **extras):
+                 instream_id=None, base_uri=None, **extras):
+        self._validate(uri, type_, group_id, language, name, default,
+                       autoselect, forced, characteristics, assoc_language,
+                       instream_id, base_uri, **extras)
         self.base_uri = base_uri
         self.uri = uri
-        self.type = type
+        self.type = type_
         self.group_id = group_id
         self.language = language
         self.name = name
@@ -608,6 +618,24 @@ class Media(BasePathMixin):
         self.instream_id = instream_id
         self.characteristics = characteristics
         self.extras = extras
+
+    def _validate(self, uri, type_, group_id, language, name, default,
+                  autoselect, forced, characteristics, assoc_language,
+                  instream_id, base_uri, **extras):
+        errors = []
+        if not type_ or type_ not in self.TYPE_CHOICES:
+            errors.append('The TYPE attribute is required and must be one of: '
+                          '{}.'.format(', '.join(self.TYPE_CHOICES)))
+        elif type_ == self.TYPE_CLOSED_CAPTIONS and not instream_id:
+            errors.append('The INSTREAM-ID attribute is required when TYPE is '
+                          '`{}`.'.format(self.TYPE_CLOSED_CAPTIONS))
+        if not group_id:
+            errors.append('The GROUP-ID attribute is required.')
+        if not name:
+            errors.append('The NAME attribute is required.')
+        if errors:
+            raise InvalidMedia('The provided EXT-X-MEDIA data is invalid: ' +
+                               ' '.join(errors))
 
     def dumps(self):
         media_out = []
@@ -655,6 +683,10 @@ class PlaylistList(list, GroupedBasePathMixin):
     def __str__(self):
         output = [str(playlist) for playlist in self]
         return '\n'.join(output)
+
+
+class InvalidMedia(ValueError):
+    pass
 
 
 def denormalize_attribute(attribute):
