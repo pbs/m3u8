@@ -8,12 +8,29 @@ import m3u8
 def test_create_a_variant_m3u8_with_two_playlists():
     variant_m3u8 = m3u8.M3U8()
 
-    subtitles = m3u8.Media('english_sub.m3u8', 'SUBTITLES', 'subs', 'en',
-                           'English', 'YES', 'YES', 'NO', None)
+    subtitles = m3u8.Media(uri='english_sub.m3u8',
+                           type='SUBTITLES',
+                           group_id='subs',
+                           language='en',
+                           name='English',
+                           default='YES',
+                           autoselect='YES',
+                           forced='NO',
+                           characteristics=None)
     variant_m3u8.add_media(subtitles)
 
-    low_playlist = m3u8.Playlist('http://example.com/low.m3u8', stream_info={'bandwidth': 1280000, 'program_id': 1, 'subtitles': 'subs'}, media=[subtitles], base_uri=None)
-    high_playlist = m3u8.Playlist('http://example.com/high.m3u8', stream_info={'bandwidth': 3000000, 'program_id': 1, 'subtitles': 'subs'}, media=[subtitles], base_uri=None)
+    low_playlist = m3u8.Playlist('http://example.com/low.m3u8',
+                                 stream_info={'bandwidth': 1280000,
+                                              'program_id': 1,
+                                              'subtitles': 'subs'},
+                                 media=[subtitles],
+                                 base_uri=None)
+    high_playlist = m3u8.Playlist('http://example.com/high.m3u8',
+                                  stream_info={'bandwidth': 3000000,
+                                               'program_id': 1,
+                                               'subtitles': 'subs'},
+                                  media=[subtitles],
+                                  base_uri=None)
 
     variant_m3u8.add_playlist(low_playlist)
     variant_m3u8.add_playlist(high_playlist)
@@ -31,8 +48,15 @@ http://example.com/high.m3u8
 def test_create_a_variant_m3u8_with_two_playlists_and_two_iframe_playlists():
     variant_m3u8 = m3u8.M3U8()
 
-    subtitles = m3u8.Media('english_sub.m3u8', 'SUBTITLES', 'subs', 'en',
-                           'English', 'YES', 'YES', 'NO', None)
+    subtitles = m3u8.Media(uri='english_sub.m3u8',
+                           type='SUBTITLES',
+                           group_id='subs',
+                           language='en',
+                           name='English',
+                           default='YES',
+                           autoselect='YES',
+                           forced='NO',
+                           characteristics=None)
     variant_m3u8.add_media(subtitles)
 
     low_playlist = m3u8.Playlist(
