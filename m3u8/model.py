@@ -7,6 +7,7 @@ from collections import namedtuple
 import os
 import errno
 import math
+import re
 
 try:
     import urlparse as url_parser
@@ -618,6 +619,8 @@ class Media(BasePathMixin):
                     TYPE_SUBTITLES, TYPE_CLOSED_CAPTIONS)
     BOOLEAN_CHOICES = ('YES', 'NO')
     BOOLEAN_CHOISES_REPR = ', '.join(BOOLEAN_CHOICES)
+    INSTREAM_ID_PATTERN = re.compile('^(CC[1-4]|'
+                                     'SERVICE([1-9]|[1-5]\d|6[0-3]))$')
 
     def __init__(self, uri=None, type=None, group_id=None, language=None,
                  name=None, default=None, autoselect=None, forced=None,
@@ -737,7 +740,7 @@ class Media(BasePathMixin):
     @instream_id.setter
     def instream_id(self, value):
         if self.type == self.TYPE_CLOSED_CAPTIONS:
-            if not (value and self.INSTREAM_ID_PATTERN.matches(value)):
+            if not (value and self.INSTREAM_ID_PATTERN.match(value)):
                 raise InvalidMedia(
                     'The EXT-X-MEDIA INSTREAM-ID attribute is required and '
                     'must have the format `CC[1-4]` or `SERVICE[1-63]` when '
@@ -778,11 +781,10 @@ class Media(BasePathMixin):
 
     @classmethod
     def _validate_boolean_attribute(cls, value, name):
-        pass
-        #if value is not None and value not in cls.BOOLEAN_CHOICES:
-        #    raise InvalidMedia(
-        #        'The EXT-X-MEDIA {} attribute may only take the following '
-        #        'values: {}.'.format(name, cls.BOOLEAN_CHOISES_REPR))
+        if value is not None and value not in cls.BOOLEAN_CHOICES:
+            raise InvalidMedia(
+                'The EXT-X-MEDIA {} attribute may only take the following '
+                'values: {}.'.format(name, cls.BOOLEAN_CHOISES_REPR))
 
 
 class MediaList(set, GroupedBasePathMixin):
@@ -809,7 +811,7 @@ class MediaList(set, GroupedBasePathMixin):
 
         """
         if replace:
-            self.pop(element)
+            self.remove(element)
         super(MediaList, self).add(element)
 
 
