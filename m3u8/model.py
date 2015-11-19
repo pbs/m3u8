@@ -209,16 +209,40 @@ class M3U8(object):
         self.is_variant = True
         self.playlists.append(playlist)
 
+    def remove_playlist(self, playlist):
+        if self.is_variant and self.playlists:
+            try:
+                self.playlists.remove(playlist)
+            except ValueError:
+                pass
+
     def add_iframe_playlist(self, iframe_playlist):
         if iframe_playlist is not None:
             self.is_variant = True
             self.iframe_playlists.append(iframe_playlist)
 
+    def remove_iframe_playlist(self, iframe_playlist):
+        if self.iframe_playlists:
+            try:
+                self.iframe_playlists.remove(iframe_playlist)
+            except ValueError:
+                pass
+
     def add_media(self, media, replace=False):
         self.media.add(media, replace)
 
+    def remove_media(self, media):
+        self.media.discard(media)
+
     def add_segment(self, segment):
         self.segments.append(segment)
+
+    def remove_segment(self, segment):
+        if self.segments:
+            try:
+                self.segments.remove(segment)
+            except ValueError:
+                pass
 
     def dumps(self):
         '''
