@@ -174,3 +174,13 @@ def test_equivalent_media_element_added_if_specified():
     assert len(media_list) == 1
     en_sub = media_list.pop()
     assert en_sub.uri == 'en_subs_2.vtt' and en_sub.default == 'YES'
+
+
+def test_add_unregistered_media_with_replace_flag_set():
+    en_sub = Media(group_id='subs', type='SUBTITLES', name='English subs',
+                   uri='en_subs.vtt')
+    media_list = MediaList()
+
+    media_list.add(en_sub, replace=True)
+
+    assert len(media_list) == 1

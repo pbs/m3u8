@@ -697,6 +697,10 @@ class Media(BasePathMixin):
     def __str__(self):
         return self.dumps()
 
+    def __repr__(self):
+        return ('Media(group_id={}, type={}, name={})'
+                .format(self.group_id, self.type, self.name))
+
     @property
     def group_id(self):
         return self._group_id
@@ -835,7 +839,7 @@ class MediaList(set, GroupedBasePathMixin):
 
         """
         if replace:
-            self.remove(element)
+            self.discard(element)
         super(MediaList, self).add(element)
 
 
