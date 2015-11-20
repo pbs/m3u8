@@ -64,7 +64,7 @@ def test_segment_cue_out_attribute():
 
     assert segments[1].cue_out == True
     assert segments[2].cue_out == True
-    assert segments[3].cue_out == True
+    assert segments[3].cue_out == False
 
 def test_key_attribute():
     obj = m3u8.M3U8(playlists.SIMPLE_PLAYLIST)

@@ -7,6 +7,7 @@ from collections import namedtuple
 import os
 import errno
 import math
+import re
 
 try:
     import urlparse as url_parser
@@ -14,6 +15,10 @@ except ImportError:
     import urllib.parse as url_parser
 
 from m3u8 import parser
+
+
+BOOLEAN_CHOICES = ('YES', 'NO')
+BOOLEAN_CHOISES_REPR = ', '.join(BOOLEAN_CHOICES)
 
 
 class M3U8(object):
@@ -124,7 +129,8 @@ class M3U8(object):
         ('playlist_type',    'playlist_type')
         )
 
-    def __init__(self, content=None, base_path=None, base_uri=None, strict=False):
+    def __init__(self, content=None, base_path=None, base_uri=None,
+                 strict=False):
         if content is not None:
             self.data = parser.parse(content, strict)
         else:
@@ -138,9 +144,12 @@ class M3U8(object):
         self.base_path = base_path
 
     def _initialize_attributes(self):
-        self.key = Key(base_uri=self.base_uri, **self.data['key']) if 'key' in self.data else None
-        self.segments = SegmentList([ Segment(base_uri=self.base_uri, **params)
-                                      for params in self.data.get('segments', []) ])
+        self.key = (Key(base_uri=self.base_uri, **self.data['key'])
+                    if 'key' in self.data else None)
+        self.segments = SegmentList(
+            [Segment(base_uri=self.base_uri, **params)
+             for params in self.data.get('segments', [])]
+        )
 
         for attr, param in self.simple_attributes:
             setattr(self, attr, self.data.get(param))
@@ -150,14 +159,15 @@ class M3U8(object):
             self.files.append(self.key.uri)
         self.files.extend(self.segments.uri)
 
-        self.media = MediaList([ Media(base_uri=self.base_uri,
-                                       **media)
-                                 for media in self.data.get('media', []) ])
+        self.media = MediaList(
+            [Media(base_uri=self.base_uri, **media)
+             for media in self.data.get('media', [])]
+        )
 
-        self.playlists = PlaylistList([ Playlist(base_uri=self.base_uri,
-                                                 media=self.media,
-                                                 **playlist)
-                                        for playlist in self.data.get('playlists', []) ])
+        self.playlists = PlaylistList(
+            [Playlist(base_uri=self.base_uri, media=self.media, **playlist)
+             for playlist in self.data.get('playlists', [])]
+        )
 
         self.iframe_playlists = PlaylistList()
         for ifr_pl in self.data.get('iframe_playlists', []):
@@ -203,16 +213,40 @@ class M3U8(object):
         self.is_variant = True
         self.playlists.append(playlist)
 
+    def remove_playlist(self, playlist):
+        if self.is_variant and self.playlists:
+            try:
+                self.playlists.remove(playlist)
+            except ValueError:
+                pass
+
     def add_iframe_playlist(self, iframe_playlist):
         if iframe_playlist is not None:
             self.is_variant = True
             self.iframe_playlists.append(iframe_playlist)
 
-    def add_media(self, media):
-        self.media.append(media)
+    def remove_iframe_playlist(self, iframe_playlist):
+        if self.iframe_playlists:
+            try:
+                self.iframe_playlists.remove(iframe_playlist)
+            except ValueError:
+                pass
+
+    def add_media(self, media, replace=False):
+        self.media.add(media, replace)
+
+    def remove_media(self, media):
+        self.media.discard(media)
 
     def add_segment(self, segment):
         self.segments.append(segment)
+
+    def remove_segment(self, segment):
+        if self.segments:
+            try:
+                self.segments.remove(segment)
+            except ValueError:
+                pass
 
     def dumps(self):
         '''
@@ -231,9 +265,11 @@ class M3U8(object):
         if self.key:
             output.append(str(self.key))
         if self.target_duration:
-            output.append('#EXT-X-TARGETDURATION:' + int_or_float_to_string(self.target_duration))
+            output.append('#EXT-X-TARGETDURATION:' +
+                          int_or_float_to_string(self.target_duration))
         if self.program_date_time is not None:
-            output.append('#EXT-X-PROGRAM-DATE-TIME:' + parser.format_date_time(self.program_date_time))
+            output.append('#EXT-X-PROGRAM-DATE-TIME:' +
+                          parser.format_date_time(self.program_date_time))
         if not (self.playlist_type is None or self.playlist_type == ''):
             output.append(
                 '#EXT-X-PLAYLIST-TYPE:%s' % str(self.playlist_type).upper())
@@ -270,6 +306,7 @@ class M3U8(object):
             if error.errno != errno.EEXIST:
                 raise
 
+
 class BasePathMixin(object):
 
     @property
@@ -280,7 +317,8 @@ class BasePathMixin(object):
             return self.uri
         else:
             if self.base_uri is None:
-                raise ValueError('There can not be `absolute_uri` with no `base_uri` set')
+                raise ValueError('There can not be `absolute_uri` with no '
+                                 '`base_uri` set')
             return _urijoin(self.base_uri, self.uri)
 
     @property
@@ -292,6 +330,7 @@ class BasePathMixin(object):
         if not self.base_path:
             self.uri = "%s/%s" % (newbase_path, self.uri)
         self.uri = self.uri.replace(self.base_path, newbase_path)
+
 
 class GroupedBasePathMixin(object):
 
@@ -306,6 +345,7 @@ class GroupedBasePathMixin(object):
             item.base_path = newbase_path
 
     base_path = property(None, _set_base_path)
+
 
 class Segment(BasePathMixin):
     '''
@@ -342,7 +382,8 @@ class Segment(BasePathMixin):
     '''
 
     def __init__(self, uri, base_uri, program_date_time=None, duration=None,
-                 title=None, byterange=None, cue_out=False, discontinuity=False, key=None):
+                 title=None, byterange=None, cue_out=False,
+                 discontinuity=False, key=None):
         self.uri = uri
         self.duration = duration
         self.title = title
@@ -351,19 +392,19 @@ class Segment(BasePathMixin):
         self.program_date_time = program_date_time
         self.discontinuity = discontinuity
         self.cue_out = cue_out
-        self.key = Key(base_uri=base_uri,**key) if key else None
-
+        self.key = Key(base_uri=base_uri, **key) if key else None
 
     def dumps(self, last_segment):
         output = []
         if last_segment and self.key != last_segment.key:
-          output.append(str(self.key))
-          output.append('\n')
+            output.append(str(self.key))
+            output.append('\n')
 
         if self.discontinuity:
             output.append('#EXT-X-DISCONTINUITY\n')
             if self.program_date_time:
-                output.append('#EXT-X-PROGRAM-DATE-TIME:%s\n' % parser.format_date_time(self.program_date_time))
+                output.append('#EXT-X-PROGRAM-DATE-TIME:%s\n' %
+                              parser.format_date_time(self.program_date_time))
         if self.cue_out:
             output.append('#EXT-X-CUE-OUT-CONT\n')
         output.append('#EXTINF:%s,' % int_or_float_to_string(self.duration))
@@ -389,13 +430,14 @@ class SegmentList(list, GroupedBasePathMixin):
         output = []
         last_segment = None
         for segment in self:
-          output.append(segment.dumps(last_segment))
-          last_segment = segment
+            output.append(segment.dumps(last_segment))
+            last_segment = segment
         return '\n'.join(output)
 
     @property
     def uri(self):
         return [seg.uri for seg in self]
+
 
 class Key(BasePathMixin):
     '''
@@ -414,7 +456,8 @@ class Key(BasePathMixin):
       initialization vector. a string representing a hexadecimal number. ex.: 0X12A
 
     '''
-    def __init__(self, method, uri, base_uri, iv=None, keyformat=None, keyformatversions=None):
+    def __init__(self, method, uri, base_uri, iv=None, keyformat=None,
+                 keyformatversions=None):
         self.method = method
         self.uri = uri
         self.iv = iv
@@ -438,12 +481,12 @@ class Key(BasePathMixin):
         return '#EXT-X-KEY:' + ','.join(output)
 
     def __eq__(self, other):
-        return self.method == other.method and \
-               self.uri == other.uri and \
-               self.iv == other.iv and \
-               self.base_uri == other.base_uri and \
-               self.keyformat == other.keyformat and \
-               self.keyformatversions == other.keyformatversions
+        return (self.method == other.method and
+                self.uri == other.uri and
+                self.iv == other.iv and
+                self.base_uri == other.base_uri and
+                self.keyformat == other.keyformat and
+                self.keyformatversions == other.keyformatversions)
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -451,7 +494,8 @@ class Key(BasePathMixin):
 
 class Playlist(BasePathMixin):
     '''
-    Playlist object representing a link to a variant M3U8 with a specific bitrate.
+    Playlist object representing a link to a variant M3U8 with a specific
+    bitrate.
 
     Attributes:
 
@@ -468,7 +512,7 @@ class Playlist(BasePathMixin):
         self.base_uri = base_uri
 
         resolution = stream_info.get('resolution')
-        if resolution != None:
+        if resolution is not None:
             values = resolution.split('x')
             resolution_pair = (int(values[0]), int(values[1]))
         else:
@@ -499,7 +543,9 @@ class Playlist(BasePathMixin):
             stream_inf.append('AVERAGE-BANDWIDTH=%d' %
                               self.stream_info.average_bandwidth)
         if self.stream_info.resolution:
-            res = str(self.stream_info.resolution[0]) + 'x' + str(self.stream_info.resolution[1])
+            res = (str(self.stream_info.resolution[0]) +
+                   'x' +
+                   str(self.stream_info.resolution[1]))
             stream_inf.append('RESOLUTION=' + res)
         if self.stream_info.codecs:
             stream_inf.append('CODECS=' + quoted(self.stream_info.codecs))
@@ -509,6 +555,7 @@ class Playlist(BasePathMixin):
             stream_inf.append('%s="%s"' % (media_type, media.group_id))
 
         return '#EXT-X-STREAM-INF:' + ','.join(stream_inf) + '\n' + self.uri
+
 
 class IFramePlaylist(BasePathMixin):
     '''
@@ -567,6 +614,7 @@ StreamInfo = namedtuple(
     ['bandwidth', 'average_bandwidth', 'program_id', 'resolution', 'codecs']
 )
 
+
 class Media(BasePathMixin):
     '''
     A media object from a M3U8 playlist
@@ -591,16 +639,27 @@ class Media(BasePathMixin):
       uri the media comes from in URI hierarchy. ex.: http://example.com/path/to
     '''
 
+    TYPE_AUDIO = 'AUDIO'
+    TYPE_VIDEO = 'VIDEO'
+    TYPE_SUBTITLES = 'SUBTITLES'
+    TYPE_CLOSED_CAPTIONS = 'CLOSED-CAPTIONS'
+    TYPE_CHOICES = (TYPE_AUDIO, TYPE_VIDEO,
+                    TYPE_SUBTITLES, TYPE_CLOSED_CAPTIONS)
+    INSTREAM_ID_PATTERN = re.compile('^(CC[1-4]|'
+                                     'SERVICE([1-9]|[1-5]\d|6[0-3]))$')
+
     def __init__(self, uri=None, type=None, group_id=None, language=None,
                  name=None, default=None, autoselect=None, forced=None,
                  characteristics=None, assoc_language=None,
-                 instream_id=None,base_uri=None, **extras):
+                 instream_id=None, base_uri=None, **extras):
+        # required attributes
+        self.group_id = group_id
+        self.type = type
+        self.name = name
+        # optional attributes
         self.base_uri = base_uri
         self.uri = uri
-        self.type = type
-        self.group_id = group_id
         self.language = language
-        self.name = name
         self.default = default
         self.autoselect = autoselect
         self.forced = forced
@@ -608,6 +667,119 @@ class Media(BasePathMixin):
         self.instream_id = instream_id
         self.characteristics = characteristics
         self.extras = extras
+
+    def __eq__(self, other):
+        """
+        Compare 2 Media objects based on the essential fields used in rendition
+        groups: `group_id`, `type`, `name`.
+        """
+        return (self.group_id == other.group_id and
+                self.type == other.type and
+                self.name == other.name)
+
+    def __hash__(self):
+        """
+        Returns a hash of the fields used in rendition group identification.
+        """
+        return hash(str(self.type) + str(self.group_id) + str(self.name))
+
+    def __lt__(self, other):
+        """
+        Compare the Media objects base on the fields essential to rendition
+        groups in the following order: `group_id`, `type`, `name`.
+        """
+        if self.group_id == other.group_id:
+            if self.type == other.type:
+                return self.name < other.name
+            else:
+                return self.type < other.type
+        else:
+            return self.group_id < other.group_id
+
+    def __str__(self):
+        return self.dumps()
+
+    def __repr__(self):
+        return ('Media(group_id={}, type={}, name={})'
+                .format(self.group_id, self.type, self.name))
+
+    @property
+    def group_id(self):
+        return self._group_id
+
+    @group_id.setter
+    def group_id(self, value):
+        if not value:
+            raise InvalidMedia(
+                'The EXT-X-MEDIA GROUP-ID attribute is required.')
+        self._group_id = value
+
+    @property
+    def type(self):
+        return self._type
+
+    @type.setter
+    def type(self, value):
+        if not value or value not in self.TYPE_CHOICES:
+            raise InvalidMedia(
+                'The EXT-X-MEDIA TYPE attribute is required and must be one '
+                'of: {}.'.format(', '.join(self.TYPE_CHOICES)))
+        self._type = value
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        if not value:
+            raise InvalidMedia('The EXT-X-MEDIA NAME attribute is required.')
+        self._name = value
+
+    @property
+    def default(self):
+        return self._default
+
+    @default.setter
+    def default(self, value):
+        validate_boolean_attribute(value, 'DEFAULT')
+        self._default = value
+
+    @property
+    def autoselect(self):
+        return self._autoselect
+
+    @autoselect.setter
+    def autoselect(self, value):
+        validate_boolean_attribute(value, 'AUTOSELECT')
+        self._autoselect = value
+
+    @property
+    def forced(self):
+        return self._forced
+
+    @forced.setter
+    def forced(self, value):
+        validate_boolean_attribute(value, 'FORCED')
+        self._forced = value
+
+    @property
+    def instream_id(self):
+        return self._instream_id
+
+    @instream_id.setter
+    def instream_id(self, value):
+        if self.type == self.TYPE_CLOSED_CAPTIONS:
+            if not (value and self.INSTREAM_ID_PATTERN.match(value)):
+                raise InvalidMedia(
+                    'The EXT-X-MEDIA INSTREAM-ID attribute is required and '
+                    'must have the format `CC[1-4]` or `SERVICE[1-63]` when '
+                    'TYPE is `{}`.'.format(self.TYPE_CLOSED_CAPTIONS))
+        elif value:
+            raise InvalidMedia(
+                'The EXT-X-MEDIA INSTREAM-ID attribute must not appear when '
+                'TYPE is `{}`.'.format(self.type))
+        self._instream_id = value
 
     def dumps(self):
         media_out = []
@@ -637,10 +809,9 @@ class Media(BasePathMixin):
 
         return ('#EXT-X-MEDIA:' + ','.join(media_out))
 
-    def __str__(self):
-        return self.dumps()
 
-class MediaList(list, GroupedBasePathMixin):
+class MediaList(set, GroupedBasePathMixin):
+    """Implements a list of unique EXT-X-MEDIA elements."""
 
     def __str__(self):
         output = [str(playlist) for playlist in self]
@@ -648,7 +819,24 @@ class MediaList(list, GroupedBasePathMixin):
 
     @property
     def uri(self):
+        """The URIs of all the elements in this `MediaList`."""
         return [media.uri for media in self]
+
+    def add(self, element, replace=False):
+        """
+        Add an element to the list if it doesn't already exist.
+        If the `replace` flag is set, the existing element is removed and the
+        provided element is added.
+
+        :param element: - a Media element
+        :param replace: - a flag indicating whether to replace existing
+        elements. Defaults to `False`.
+
+        """
+        if replace:
+            self.discard(element)
+        super(MediaList, self).add(element)
+
 
 class PlaylistList(list, GroupedBasePathMixin):
 
@@ -657,11 +845,17 @@ class PlaylistList(list, GroupedBasePathMixin):
         return '\n'.join(output)
 
 
+class InvalidMedia(ValueError):
+    pass
+
+
 def denormalize_attribute(attribute):
-    return attribute.replace('_','-').upper()
+    return attribute.replace('_', '-').upper()
+
 
 def quoted(string):
     return '"%s"' % string
+
 
 def _urijoin(base_uri, path):
     if parser.is_url(base_uri):
@@ -669,5 +863,13 @@ def _urijoin(base_uri, path):
     else:
         return os.path.normpath(os.path.join(base_uri, path.strip('/')))
 
+
 def int_or_float_to_string(number):
     return str(int(number)) if number == math.floor(number) else str(number)
+
+
+def validate_boolean_attribute(value, name):
+    if value is not None and value not in BOOLEAN_CHOICES:
+        raise InvalidMedia(
+            'The EXT-X-MEDIA {} attribute may only take the following '
+            'values: {}.'.format(name, BOOLEAN_CHOISES_REPR))

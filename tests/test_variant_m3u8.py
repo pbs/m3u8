@@ -5,15 +5,33 @@
 
 import m3u8
 
+
 def test_create_a_variant_m3u8_with_two_playlists():
     variant_m3u8 = m3u8.M3U8()
 
-    subtitles = m3u8.Media('english_sub.m3u8', 'SUBTITLES', 'subs', 'en',
-                           'English', 'YES', 'YES', 'NO', None)
+    subtitles = m3u8.Media(uri='english_sub.m3u8',
+                           type='SUBTITLES',
+                           group_id='subs',
+                           language='en',
+                           name='English',
+                           default='YES',
+                           autoselect='YES',
+                           forced='NO',
+                           characteristics=None)
     variant_m3u8.add_media(subtitles)
 
-    low_playlist = m3u8.Playlist('http://example.com/low.m3u8', stream_info={'bandwidth': 1280000, 'program_id': 1, 'subtitles': 'subs'}, media=[subtitles], base_uri=None)
-    high_playlist = m3u8.Playlist('http://example.com/high.m3u8', stream_info={'bandwidth': 3000000, 'program_id': 1, 'subtitles': 'subs'}, media=[subtitles], base_uri=None)
+    low_playlist = m3u8.Playlist('http://example.com/low.m3u8',
+                                 stream_info={'bandwidth': 1280000,
+                                              'program_id': 1,
+                                              'subtitles': 'subs'},
+                                 media=[subtitles],
+                                 base_uri=None)
+    high_playlist = m3u8.Playlist('http://example.com/high.m3u8',
+                                  stream_info={'bandwidth': 3000000,
+                                               'program_id': 1,
+                                               'subtitles': 'subs'},
+                                  media=[subtitles],
+                                  base_uri=None)
 
     variant_m3u8.add_playlist(low_playlist)
     variant_m3u8.add_playlist(high_playlist)
@@ -28,11 +46,19 @@ http://example.com/high.m3u8
 """
     assert expected_content == variant_m3u8.dumps()
 
+
 def test_create_a_variant_m3u8_with_two_playlists_and_two_iframe_playlists():
     variant_m3u8 = m3u8.M3U8()
 
-    subtitles = m3u8.Media('english_sub.m3u8', 'SUBTITLES', 'subs', 'en',
-                           'English', 'YES', 'YES', 'NO', None)
+    subtitles = m3u8.Media(uri='english_sub.m3u8',
+                           type='SUBTITLES',
+                           group_id='subs',
+                           language='en',
+                           name='English',
+                           default='YES',
+                           autoselect='YES',
+                           forced='NO',
+                           characteristics=None)
     variant_m3u8.add_media(subtitles)
 
     low_playlist = m3u8.Playlist(
@@ -110,8 +136,8 @@ def test_variant_playlist_with_average_bandwidth():
                      'average_bandwidth': 2857123,
                      'program_id': 1,
                      'subtitles': 'subs'},
-       media=[],
-       base_uri=None
+        media=[],
+        base_uri=None
     )
 
     variant_m3u8.add_playlist(low_playlist)
@@ -125,3 +151,204 @@ http://example.com/low.m3u8
 http://example.com/high.m3u8
 """
     assert expected_content == variant_m3u8.dumps()
+
+
+def test_remove_playlist_from_variant_playlist():
+    variant_m3u8 = m3u8.M3U8()
+    low_playlist = m3u8.Playlist(
+        'http://example.com/low.m3u8',
+        stream_info={'bandwidth': 1280000,
+                     'average_bandwidth': 1257891,
+                     'program_id': 1,
+                     'subtitles': 'subs'},
+        media=[],
+        base_uri=None
+    )
+    variant_m3u8.add_playlist(low_playlist)
+
+    variant_m3u8.remove_playlist(low_playlist)
+
+    assert len(variant_m3u8.playlists) == 0
+
+
+def test_remove_unregistered_playlist_does_not_raise_error():
+    variant_m3u8 = m3u8.M3U8()
+    low_playlist = m3u8.Playlist(
+        'http://example.com/low.m3u8',
+        stream_info={'bandwidth': 1280000,
+                     'average_bandwidth': 1257891,
+                     'program_id': 1,
+                     'subtitles': 'subs'},
+        media=[],
+        base_uri=None
+    )
+
+    variant_m3u8.remove_playlist(low_playlist)
+
+    assert len(variant_m3u8.playlists) == 0
+
+
+def test_remove_ifram_playlist_from_variant_playlist():
+    variant_m3u8 = m3u8.M3U8()
+    high_iframe_playlist = m3u8.IFramePlaylist(
+        uri='video-1200k-iframes.m3u8',
+        iframe_stream_info={'bandwidth': 193350,
+                            'codecs': 'avc1.4d001f'},
+        base_uri='http://example.com/'
+    )
+    variant_m3u8.add_iframe_playlist(high_iframe_playlist)
+
+    variant_m3u8.remove_iframe_playlist(high_iframe_playlist)
+
+    assert len(variant_m3u8.iframe_playlists) == 0
+
+
+def test_removing_unregistered_ifram_playlist_from_variant_playlist():
+    variant_m3u8 = m3u8.M3U8()
+    high_iframe_playlist = m3u8.IFramePlaylist(
+        uri='video-1200k-iframes.m3u8',
+        iframe_stream_info={'bandwidth': 193350,
+                            'codecs': 'avc1.4d001f'},
+        base_uri='http://example.com/'
+    )
+
+    variant_m3u8.remove_iframe_playlist(high_iframe_playlist)
+
+    assert len(variant_m3u8.iframe_playlists) == 0
+
+
+def test_playlist_stores_1st_of_2_equivalent_media_items():
+    variant_m3u8 = m3u8.M3U8()
+    default_subs = m3u8.Media(
+        group_id='subs',
+        type='SUBTITLES',
+        name='English',
+        uri='english_sub.m3u8',
+        language='en',
+        default='YES',
+        autoselect='YES',
+        forced='NO'
+    )
+    non_default_subs = m3u8.Media(
+        group_id='subs',
+        type='SUBTITLES',
+        name='English',
+        uri='english_sub.m3u8',
+        language='en',
+        default='NO',
+        autoselect='NO',
+        forced='NO'
+    )
+    variant_m3u8.add_media(default_subs)
+
+    variant_m3u8.add_media(non_default_subs)
+
+    assert len(variant_m3u8.media) == 1
+    collected_subs = variant_m3u8.media.pop()
+    assert collected_subs.default == collected_subs.autoselect == 'YES'
+
+
+def test_playlist_stores_2nd_of_2_equivalent_media_items_when_specified():
+    variant_m3u8 = m3u8.M3U8()
+    default_subs = m3u8.Media(
+        group_id='subs',
+        type='SUBTITLES',
+        name='English',
+        uri='english_sub.m3u8',
+        language='en',
+        default='YES',
+        autoselect='YES',
+        forced='NO'
+    )
+    non_default_subs = m3u8.Media(
+        group_id='subs',
+        type='SUBTITLES',
+        name='English',
+        uri='english_sub.m3u8',
+        language='en',
+        default='NO',
+        autoselect='NO',
+        forced='NO'
+    )
+    variant_m3u8.add_media(default_subs)
+
+    variant_m3u8.add_media(non_default_subs, replace=True)
+
+    assert len(variant_m3u8.media) == 1
+    collected_subs = variant_m3u8.media.pop()
+    assert collected_subs.default == collected_subs.autoselect == 'NO'
+
+
+def test_remove_media_from_playlist():
+    variant_m3u8 = m3u8.M3U8()
+    subs_1 = m3u8.Media(
+        group_id='subs',
+        type='SUBTITLES',
+        name='English',
+        uri='english_sub.m3u8',
+        language='en',
+        default='YES',
+        autoselect='YES',
+        forced='NO'
+    )
+    subs_2 = m3u8.Media(
+        group_id='subs',
+        type='SUBTITLES',
+        name='English',
+        uri='english_sub.m3u8',
+        language='en',
+        default='NO',
+        autoselect='NO',
+        forced='NO'
+    )
+    variant_m3u8.add_media(subs_1)
+
+    variant_m3u8.remove_media(subs_2)
+
+    assert len(variant_m3u8.media) == 0
+
+
+def test_removing_unregistered_media_does_not_raise_error():
+    variant_m3u8 = m3u8.M3U8()
+    subs = m3u8.Media(
+        group_id='subs',
+        type='SUBTITLES',
+        name='English',
+        uri='english_sub.m3u8',
+        language='en',
+        default='YES',
+        autoselect='YES',
+        forced='NO'
+    )
+
+    variant_m3u8.remove_media(subs)
+
+    assert len(variant_m3u8.media) == 0
+
+
+def test_add_segment_to_playlist():
+    variant_m3u8 = m3u8.M3U8()
+    seg = m3u8.Segment('smth.ts', 'http://example.com/')
+
+    variant_m3u8.add_segment(seg)
+
+    assert len(variant_m3u8.segments) == 1
+
+
+def test_removing_segment_from_playlist():
+    variant_m3u8 = m3u8.M3U8()
+    seg = m3u8.Segment('smth.ts', 'http://example.com/')
+    variant_m3u8.add_segment(seg)
+
+    variant_m3u8.remove_segment(seg)
+
+    assert len(variant_m3u8.segments) == 0
+
+
+def test_removing_unregistered_segment_from_playlist():
+    variant_m3u8 = m3u8.M3U8()
+    seg = m3u8.Segment('smth.ts', 'http://example.com/')
+
+    variant_m3u8.remove_segment(seg)
+
+    assert len(variant_m3u8.segments) == 0
