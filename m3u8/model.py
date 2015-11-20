@@ -17,6 +17,10 @@ except ImportError:
 from m3u8 import parser
 
 
+BOOLEAN_CHOICES = ('YES', 'NO')
+BOOLEAN_CHOISES_REPR = ', '.join(BOOLEAN_CHOICES)
+
+
 class M3U8(object):
     '''
     Represents a single M3U8 playlist. Should be instantiated with
@@ -641,8 +645,6 @@ class Media(BasePathMixin):
     TYPE_CLOSED_CAPTIONS = 'CLOSED-CAPTIONS'
     TYPE_CHOICES = (TYPE_AUDIO, TYPE_VIDEO,
                     TYPE_SUBTITLES, TYPE_CLOSED_CAPTIONS)
-    BOOLEAN_CHOICES = ('YES', 'NO')
-    BOOLEAN_CHOISES_REPR = ', '.join(BOOLEAN_CHOICES)
     INSTREAM_ID_PATTERN = re.compile('^(CC[1-4]|'
                                      'SERVICE([1-9]|[1-5]\d|6[0-3]))$')
 
@@ -740,7 +742,7 @@ class Media(BasePathMixin):
 
     @default.setter
     def default(self, value):
-        self._validate_boolean_attribute(value, 'DEFAULT')
+        validate_boolean_attribute(value, 'DEFAULT')
         self._default = value
 
     @property
@@ -749,7 +751,7 @@ class Media(BasePathMixin):
 
     @autoselect.setter
     def autoselect(self, value):
-        self._validate_boolean_attribute(value, 'AUTOSELECT')
+        validate_boolean_attribute(value, 'AUTOSELECT')
         self._autoselect = value
 
     @property
@@ -758,7 +760,7 @@ class Media(BasePathMixin):
 
     @forced.setter
     def forced(self, value):
-        self._validate_boolean_attribute(value, 'FORCED')
+        validate_boolean_attribute(value, 'FORCED')
         self._forced = value
 
     @property
@@ -806,13 +808,6 @@ class Media(BasePathMixin):
             media_out.append('CHARACTERISTICS=' + quoted(self.characteristics))
 
         return ('#EXT-X-MEDIA:' + ','.join(media_out))
-
-    @classmethod
-    def _validate_boolean_attribute(cls, value, name):
-        if value is not None and value not in cls.BOOLEAN_CHOICES:
-            raise InvalidMedia(
-                'The EXT-X-MEDIA {} attribute may only take the following '
-                'values: {}.'.format(name, cls.BOOLEAN_CHOISES_REPR))
 
 
 class MediaList(set, GroupedBasePathMixin):
@@ -871,3 +866,10 @@ def _urijoin(base_uri, path):
 
 def int_or_float_to_string(number):
     return str(int(number)) if number == math.floor(number) else str(number)
+
+
+def validate_boolean_attribute(value, name):
+    if value is not None and value not in BOOLEAN_CHOICES:
+        raise InvalidMedia(
+            'The EXT-X-MEDIA {} attribute may only take the following '
+            'values: {}.'.format(name, BOOLEAN_CHOISES_REPR))
