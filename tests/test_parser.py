@@ -5,7 +5,8 @@
 
 import m3u8
 import playlists
-from m3u8.parser import cast_date_time
+import pytest
+from m3u8.parser import cast_date_time, ParseError
 
 def test_should_parse_simple_playlist_from_string():
     data = m3u8.parse(playlists.SIMPLE_PLAYLIST)
@@ -38,8 +39,8 @@ def test_should_parse_playlist_with_encripted_segments_from_string():
     data = m3u8.parse(playlists.PLAYLIST_WITH_ENCRIPTED_SEGMENTS)
     assert 7794 == data['media_sequence']
     assert 15 == data['targetduration']
-    assert 'AES-128' == data['key']['method']
-    assert 'https://priv.example.com/key.php?r=52' == data['key']['uri']
+    assert 'AES-128' == data['keys'][0]['method']
+    assert 'https://priv.example.com/key.php?r=52' == data['keys'][0]['uri']
     assert ['http://media.example.com/fileSequence52-1.ts',
             'http://media.example.com/fileSequence52-2.ts',
             'http://media.example.com/fileSequence52-3.ts'] == [c['uri'] for c in data['segments']]
@@ -47,9 +48,9 @@ def test_should_parse_playlist_with_encripted_segments_from_string():
 
 def test_should_load_playlist_with_iv_from_string():
     data = m3u8.parse(playlists.PLAYLIST_WITH_ENCRIPTED_SEGMENTS_AND_IV)
-    assert "/hls-key/key.bin" == data['key']['uri']
-    assert "AES-128" == data['key']['method']
-    assert "0X10ef8f758ca555115584bb5b3c687f52" == data['key']['iv']
+    assert "/hls-key/key.bin" == data['keys'][0]['uri']
+    assert "AES-128" == data['keys'][0]['method']
+    assert "0X10ef8f758ca555115584bb5b3c687f52" == data['keys'][0]['iv']
 
 def test_should_add_key_attribute_to_segment_from_playlist():
     data = m3u8.parse(playlists.PLAYLIST_WITH_ENCRIPTED_SEGMENTS_AND_IV_WITH_MULTIPLE_KEYS)
@@ -61,6 +62,30 @@ def test_should_add_key_attribute_to_segment_from_playlist():
     assert "/hls-key/key2.bin" == last_segment_key['uri']
     assert "AES-128" == last_segment_key['method']
     assert "0Xcafe8f758ca555115584bb5b3c687f52" == last_segment_key['iv']
+
+def test_should_add_non_key_for_multiple_keys_unencrypted_and_encrypted():
+    data = m3u8.parse(playlists.PLAYLIST_WITH_MULTIPLE_KEYS_UNENCRYPTED_AND_ENCRYPTED)
+    # First two segments have no Key, so it's not in the dictionary
+    assert 'key' not in data['segments'][0]
+    assert 'key' not in data['segments'][1]
+    third_segment_key = data['segments'][2]['key']
+    assert "/hls-key/key.bin" == third_segment_key['uri']
+    assert "AES-128" == third_segment_key['method']
+    assert "0X10ef8f758ca555115584bb5b3c687f52" == third_segment_key['iv']
+    last_segment_key = data['segments'][-1]['key']
+    assert "/hls-key/key2.bin" == last_segment_key['uri']
+    assert "AES-128" == last_segment_key['method']
+    assert "0Xcafe8f758ca555115584bb5b3c687f52" == last_segment_key['iv']
+
+def test_should_handle_key_method_none_and_no_uri_attr():
+    data = m3u8.parse(playlists.PLAYLIST_WITH_MULTIPLE_KEYS_UNENCRYPTED_AND_ENCRYPTED_NONE_AND_NO_URI_ATTR)
+    assert 'key' not in data['segments'][0]
+    assert 'key' not in data['segments'][1]
+    third_segment_key = data['segments'][2]['key']
+    assert "/hls-key/key.bin" == third_segment_key['uri']
+    assert "AES-128" == third_segment_key['method']
+    assert "0X10ef8f758ca555115584bb5b3c687f52" == third_segment_key['iv']
+    assert "NONE" == data['segments'][6]['key']['method']  
 
 def test_should_parse_title_from_playlist():
     data = m3u8.parse(playlists.SIMPLE_PLAYLIST_WITH_TITLE)
@@ -97,6 +122,18 @@ def test_should_parse_variant_playlist_with_average_bandwidth():
     assert 7560423 == playlists_list[2]['stream_info']['average_bandwidth']
     assert 65000 == playlists_list[3]['stream_info']['bandwidth']
     assert 63005 == playlists_list[3]['stream_info']['average_bandwidth']
+
+# This is actually not according to specification but as for example Twitch.tv
+# is producing master playlists that have bandwidth as floats (issue 72)
+# this tests that this situation does not break the parser and will just
+# truncate to a decimal-integer according to specification
+def test_should_parse_variant_playlist_with_bandwidth_as_float():
+    data = m3u8.parse(playlists.VARIANT_PLAYLIST_WITH_BANDWIDTH_FLOAT)
+    playlists_list = list(data['playlists'])
+    assert 1280000 == playlists_list[0]['stream_info']['bandwidth']
+    assert 2560000 == playlists_list[1]['stream_info']['bandwidth']
+    assert 7680000 == playlists_list[2]['stream_info']['bandwidth']
+    assert 65000 == playlists_list[3]['stream_info']['bandwidth']
 
 def test_should_parse_variant_playlist_with_iframe_playlists():
     data = m3u8.parse(playlists.VARIANT_PLAYLIST_WITH_IFRAME_PLAYLISTS)
@@ -172,3 +209,45 @@ def test_should_parse_VERSION():
 def test_should_parse_program_date_time_from_playlist():
     data = m3u8.parse(playlists.SIMPLE_PLAYLIST_WITH_PROGRAM_DATE_TIME)
     assert cast_date_time('2014-08-13T13:36:33+00:00') == data['program_date_time']
+
+def test_should_parse_scte35_from_playlist():
+    data = m3u8.parse(playlists.CUE_OUT_ELEMENTAL_PLAYLIST)
+    assert not data['segments'][2]['cue_out']
+    assert data['segments'][3]['scte35']
+    assert data['segments'][3]['cue_out']
+    assert '/DAlAAAAAAAAAP/wFAUAAAABf+//wpiQkv4ARKogAAEBAQAAQ6sodg==' == data['segments'][4]['scte35']
+    assert '50' == data['segments'][4]['scte35_duration']
+
+def test_should_parse_envivio_cue_playlist():
+    data = m3u8.parse(playlists.CUE_OUT_ENVIVIO_PLAYLIST)
+    assert data['segments'][3]['scte35']
+    assert data['segments'][3]['cue_out']
+    assert '/DAlAAAENOOQAP/wFAUBAABrf+//N25XDf4B9p/gAAEBAQAAxKni9A==' == data['segments'][3]['scte35']
+    assert '366' == data['segments'][3]['scte35_duration']
+    assert data['segments'][4]['cue_out']
+    assert '/DAlAAAENOOQAP/wFAUBAABrf+//N25XDf4B9p/gAAEBAQAAxKni9A==' == data['segments'][4]['scte35']
+    assert '/DAlAAAENOOQAP/wFAUBAABrf+//N25XDf4B9p/gAAEBAQAAxKni9A==' == data['segments'][5]['scte35']
+
+def test_parse_simple_playlist_messy():
+    data = m3u8.parse(playlists.SIMPLE_PLAYLIST_MESSY)
+    assert 5220 == data['targetduration']
+    assert 0 == data['media_sequence']
+    assert ['http://media.example.com/entire.ts'] == [c['uri'] for c in data['segments']]
+    assert [5220] == [c['duration'] for c in data['segments']]
+
+def test_parse_simple_playlist_messy_strict():
+    with pytest.raises(ParseError) as catch:
+        m3u8.parse(playlists.SIMPLE_PLAYLIST_MESSY, strict=True)
+    assert str(catch.value) == 'Syntax error in manifest on line 5: JUNK'
+
+def test_commaless_extinf():
+    data = m3u8.parse(playlists.SIMPLE_PLAYLIST_COMMALESS_EXTINF)
+    assert 5220 == data['targetduration']
+    assert 0 == data['media_sequence']
+    assert ['http://media.example.com/entire.ts'] == [c['uri'] for c in data['segments']]
+    assert [5220] == [c['duration'] for c in data['segments']]
+
+def test_commaless_extinf_strict():
+    with pytest.raises(ParseError) as e:
+        m3u8.parse(playlists.SIMPLE_PLAYLIST_COMMALESS_EXTINF, strict=True)
+    assert str(e.value) == 'Syntax error in manifest on line 3: #EXTINF:5220'

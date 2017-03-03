@@ -3,7 +3,7 @@
 # Use of this source code is governed by a MIT License
 # license that can be found in the LICENSE file.
 
-import m3u8
+import m3u8, playlists
 
 
 def test_create_a_variant_m3u8_with_two_playlists():
@@ -352,3 +352,8 @@ def test_removing_unregistered_segment_from_playlist():
     variant_m3u8.remove_segment(seg)
 
     assert len(variant_m3u8.segments) == 0
+
+
+def test_variant_playlist_with_multiple_media():
+    variant_m3u8 = m3u8.loads(playlists.MULTI_MEDIA_PLAYLIST)
+    assert variant_m3u8.dumps() == playlists.MULTI_MEDIA_PLAYLIST

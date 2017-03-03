@@ -3,7 +3,8 @@ from setuptools import setup
 
 long_description = None
 if exists("README.rst"):
-    long_description = open("README.rst").read()
+    with  open("README.rst") as file:
+        long_description = file.read()
 
 install_reqs = [req for req in open(abspath(join(dirname(__file__), 'requirements.txt')))]
 
@@ -11,7 +12,8 @@ setup(
     name="m3u8",
     author='Globo.com',
     author_email='videos3@corp.globo.com',
-    version="0.2.5d-pbs",
+    version="0.3.1d-pbs",
+    license='MIT',
     zip_safe=False,
     include_package_data=True,
     install_requires=install_reqs,
