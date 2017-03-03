@@ -247,7 +247,7 @@ class M3U8(object):
         self.media.add(media, replace)
 
     def remove_media(self, media):
-        self.media.remove(media)
+        self.media.discard(media)
 
     def add_segment(self, segment):
         self.segments.append(segment)
@@ -800,7 +800,7 @@ class Media(BasePathMixin):
         return ('#EXT-X-MEDIA:' + ','.join(media_out))
 
 
-class MediaList(list, GroupedBasePathMixin):
+class MediaList(set, GroupedBasePathMixin):
 
     def __str__(self):
         output = [str(playlist) for playlist in self]
@@ -823,8 +823,8 @@ class MediaList(list, GroupedBasePathMixin):
 
         """
         if replace:
-            self.remove(element)
-        super(MediaList, self).append(element)
+            self.discard(element)
+        super(MediaList, self).add(element)
 
 
 class PlaylistList(list, GroupedBasePathMixin):

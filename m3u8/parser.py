@@ -68,7 +68,7 @@ def parse(content, strict=False):
             state['expect_segment'] = True
 
         elif line.startswith(protocol.extinf):
-            _parse_extinf(line, data, state)
+            _parse_extinf(line, data, state, lineno, strict)
             state['expect_segment'] = True
 
         elif state['expect_segment']:
